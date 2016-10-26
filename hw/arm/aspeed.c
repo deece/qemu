@@ -100,6 +100,7 @@ static void aspeed_board_init(MachineState *machine,
 {
     AspeedBoardState *bmc;
     AspeedSoCClass *sc;
+    I2CBus *i2c12;
 
     bmc = g_new0(AspeedBoardState, 1);
     object_initialize(&bmc->soc, (sizeof(bmc->soc)), cfg->soc_name);
@@ -136,6 +137,9 @@ static void aspeed_board_init(MachineState *machine,
     aspeed_board_binfo.kernel_cmdline = machine->kernel_cmdline;
     aspeed_board_binfo.ram_size = ram_size;
     aspeed_board_binfo.loader_start = sc->info->sdram_base;
+
+    i2c12 = aspeed_i2c_get_bus((DeviceState *)&bmc->soc.i2c, 11);
+    i2c_create_slave(i2c12, "rx8900", 0x32);
 
     arm_load_kernel(ARM_CPU(first_cpu), &aspeed_board_binfo);
 }
