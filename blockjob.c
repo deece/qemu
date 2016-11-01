@@ -74,17 +74,6 @@ BlockJob *block_job_get(const char *id)
     return NULL;
 }
 
-/* Normally the job runs in its BlockBackend's AioContext.  The exception is
- * block_job_defer_to_main_loop() where it runs in the QEMU main loop.  Code
- * that supports both cases uses this helper function.
- */
-static AioContext *block_job_get_aio_context(BlockJob *job)
-{
-    return job->deferred_to_main_loop ?
-           qemu_get_aio_context() :
-           blk_get_aio_context(job->blk);
-}
-
 static void block_job_attached_aio_context(AioContext *new_context,
                                            void *opaque)
 {
@@ -97,6 +86,17 @@ static void block_job_attached_aio_context(AioContext *new_context,
     block_job_resume(job);
 }
 
+static void block_job_drain(BlockJob *job)
+{
+    /* If job is !job->busy this kicks it into the next pause point. */
+    block_job_enter(job);
+
+    blk_drain(job->blk);
+    if (job->driver->drain) {
+        job->driver->drain(job);
+    }
+}
+
 static void block_job_detach_aio_context(void *opaque)
 {
     BlockJob *job = opaque;
@@ -106,15 +106,18 @@ static void block_job_detach_aio_context(void *opaque)
 
     block_job_pause(job);
 
-    if (!job->paused) {
-        /* If job is !job->busy this kicks it into the next pause point. */
-        block_job_enter(job);
-    }
     while (!job->paused && !job->completed) {
-        aio_poll(block_job_get_aio_context(job), true);
+        block_job_drain(job);
     }
 
     block_job_unref(job);
+}
+
+void block_job_add_bdrv(BlockJob *job, BlockDriverState *bs)
+{
+    job->nodes = g_slist_prepend(job->nodes, bs);
+    bdrv_ref(bs);
+    bdrv_op_block_all(bs, job->blocker);
 }
 
 void *block_job_create(const char *job_id, const BlockJobDriver *driver,
@@ -154,7 +157,7 @@ void *block_job_create(const char *job_id, const BlockJobDriver *driver,
     job = g_malloc0(driver->instance_size);
     error_setg(&job->blocker, "block device is in use by block job: %s",
                BlockJobType_lookup[driver->job_type]);
-    bdrv_op_block_all(bs, job->blocker);
+    block_job_add_bdrv(job, bs);
     bdrv_op_unblock(bs, BLOCK_OP_TYPE_DATAPLANE, job->blocker);
 
     job->driver        = driver;
@@ -193,9 +196,15 @@ void block_job_ref(BlockJob *job)
 void block_job_unref(BlockJob *job)
 {
     if (--job->refcnt == 0) {
+        GSList *l;
         BlockDriverState *bs = blk_bs(job->blk);
         bs->job = NULL;
-        bdrv_op_unblock_all(bs, job->blocker);
+        for (l = job->nodes; l; l = l->next) {
+            bs = l->data;
+            bdrv_op_unblock_all(bs, job->blocker);
+            bdrv_unref(bs);
+        }
+        g_slist_free(job->nodes);
         blk_remove_aio_context_notifier(job->blk,
                                         block_job_attached_aio_context,
                                         block_job_detach_aio_context, job);
@@ -413,14 +422,21 @@ static int block_job_finish_sync(BlockJob *job,
     assert(blk_bs(job->blk)->job == job);
 
     block_job_ref(job);
+
     finish(job, &local_err);
     if (local_err) {
         error_propagate(errp, local_err);
         block_job_unref(job);
         return -EBUSY;
     }
+    /* block_job_drain calls block_job_enter, and it should be enough to
+     * induce progress until the job completes or moves to the main thread.
+    */
+    while (!job->deferred_to_main_loop && !job->completed) {
+        block_job_drain(job);
+    }
     while (!job->completed) {
-        aio_poll(block_job_get_aio_context(job), true);
+        aio_poll(qemu_get_aio_context(), true);
     }
     ret = (job->cancelled && job->ret == 0) ? -ECANCELED : job->ret;
     block_job_unref(job);
