@@ -192,32 +192,32 @@ static void validate_extension_register(RX8900State *s, uint8_t data)
     uint8_t diffmask = data ^ s->nvram[EXTENSION_REGISTER];
 
     if ((diffmask & 1 << EXT_REG_TSEL0) || (diffmask & 1 << EXT_REG_TSEL1)) {
-        error_report("WARNING: RX8900 - "
+        qemu_log_mask(LOG_UNIMP, "WARNING: RX8900 - "
             "Timer select modified but is unimplemented");
     }
 
     if ((diffmask & 1 << EXT_REG_FSEL0) || (diffmask & 1 << EXT_REG_FSEL1)) {
-        error_report("WARNING: RX8900 - "
+        qemu_log_mask(LOG_UNIMP, "WARNING: RX8900 - "
             "FOut Frequency modified but is unimplemented");
     }
 
     if (diffmask & 1 << EXT_REG_TE) {
-        error_report("WARNING: RX8900 - "
+        qemu_log_mask(LOG_UNIMP, "WARNING: RX8900 - "
             "Timer enable modified but is unimplemented");
     }
 
     if (diffmask & 1 << EXT_REG_USEL) {
-        error_report("WARNING: RX8900 - "
+        qemu_log_mask(LOG_UNIMP, "WARNING: RX8900 - "
             "Update interrupt modified but is unimplemented");
     }
 
     if (diffmask & 1 << EXT_REG_WADA) {
-        error_report("WARNING: RX8900 - "
+        qemu_log_mask(LOG_UNIMP, "WARNING: RX8900 - "
             "Week/day alarm modified but is unimplemented");
     }
 
     if (data & 1 << EXT_REG_TEST) {
-        error_report("WARNING: RX8900 - "
+        qemu_log_mask(LOG_UNIMP, "WARNING: RX8900 - "
             "Test bit is enabled but is forbidden by the manufacturer");
     }
 }
@@ -227,7 +227,7 @@ static void validate_control_register(RX8900State *s, uint8_t data)
     uint8_t diffmask = data ^ s->nvram[CONTROL_REGISTER];
 
     if (diffmask & 1 << CTRL_REG_RESET) {
-        error_report("WARNING: RX8900 - "
+        qemu_log_mask(LOG_UNIMP, "WARNING: RX8900 - "
             "Reset requested but is unimplemented");
     }
 
@@ -244,17 +244,17 @@ static void validate_control_register(RX8900State *s, uint8_t data)
     }
 
     if (diffmask & 1 << CTRL_REG_AIE) {
-        error_report("WARNING: RX8900 - "
+        qemu_log_mask(LOG_UNIMP, "WARNING: RX8900 - "
             "Alarm interrupt requested but is unimplemented");
     }
 
     if (diffmask & 1 << CTRL_REG_TIE) {
-        error_report("WARNING: RX8900 - "
+        qemu_log_mask(LOG_UNIMP, "WARNING: RX8900 - "
             "Timer interrupt requested but is unimplemented");
     }
 
     if (diffmask & 1 << CTRL_REG_UIE) {
-        error_report("WARNING: RX8900 - "
+        qemu_log_mask(LOG_UNIMP, "WARNING: RX8900 - "
             "Update interrupt requested but is unimplemented");
     }
 
