@@ -134,7 +134,7 @@ static void imx25_pdk_init(MachineState *machine)
         arm_load_kernel(&s->soc.cpu, &imx25_pdk_binfo);
     } else {
         /*
-         * This I2C device doesn't exist on the real board.
+         * These I2C devices doesn't exist on the real board.
          * We add it here (only on qtest usage) to be able to do a bit
          * of simple qtest. See "make check" for details.
          */
