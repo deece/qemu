@@ -23,6 +23,7 @@
 #include "hw/timer/rx8900_regs.h"
 #include "qemu/bcd.h"
 #include "qemu/error-report.h"
+#include "qemu/log.h"
 #include "qapi/error.h"
 #include "qapi/visitor.h"
 
@@ -38,7 +39,7 @@ typedef struct RX8900State {
     uint8_t weekday; /* Saved for deferred offset calculation, 0-6 */
     uint8_t wday_offset;
     uint8_t nvram[RX8900_NVRAM_SIZE];
-    int32_t ptr;
+    int32_t ptr; /* Wrapped to stay within RX8900_NVRAM_SIZE */
     bool addr_byte;
 } RX8900State;
 
@@ -191,32 +192,32 @@ static void validate_extension_register(RX8900State *s, uint8_t data)
 {
     uint8_t diffmask = data ^ s->nvram[EXTENSION_REGISTER];
 
-    if ((diffmask & 1 << EXT_REG_TSEL0) || (diffmask & 1 << EXT_REG_TSEL1)) {
+    if ((diffmask & EXT_MASK_TSEL0) || (diffmask & EXT_MASK_TSEL1)) {
         qemu_log_mask(LOG_UNIMP, "WARNING: RX8900 - "
             "Timer select modified but is unimplemented");
     }
 
-    if ((diffmask & 1 << EXT_REG_FSEL0) || (diffmask & 1 << EXT_REG_FSEL1)) {
+    if ((diffmask & EXT_MASK_FSEL0) || (diffmask & EXT_MASK_FSEL1)) {
         qemu_log_mask(LOG_UNIMP, "WARNING: RX8900 - "
             "FOut Frequency modified but is unimplemented");
     }
 
-    if (diffmask & 1 << EXT_REG_TE) {
+    if (diffmask & EXT_MASK_TE) {
         qemu_log_mask(LOG_UNIMP, "WARNING: RX8900 - "
             "Timer enable modified but is unimplemented");
     }
 
-    if (diffmask & 1 << EXT_REG_USEL) {
+    if (diffmask & EXT_MASK_USEL) {
         qemu_log_mask(LOG_UNIMP, "WARNING: RX8900 - "
             "Update interrupt modified but is unimplemented");
     }
 
-    if (diffmask & 1 << EXT_REG_WADA) {
+    if (diffmask & EXT_MASK_WADA) {
         qemu_log_mask(LOG_UNIMP, "WARNING: RX8900 - "
             "Week/day alarm modified but is unimplemented");
     }
 
-    if (data & 1 << EXT_REG_TEST) {
+    if (data & EXT_MASK_TEST) {
         qemu_log_mask(LOG_UNIMP, "WARNING: RX8900 - "
             "Test bit is enabled but is forbidden by the manufacturer");
     }
@@ -226,34 +227,34 @@ static void validate_control_register(RX8900State *s, uint8_t data)
 {
     uint8_t diffmask = data ^ s->nvram[CONTROL_REGISTER];
 
-    if (diffmask & 1 << CTRL_REG_RESET) {
+    if (diffmask & CTRL_MASK_RESET) {
         qemu_log_mask(LOG_UNIMP, "WARNING: RX8900 - "
             "Reset requested but is unimplemented");
     }
 
-    if (diffmask & 1 << CTRL_REG_WP0) {
+    if (diffmask & CTRL_MASK_WP0) {
         error_report("WARNING: RX8900 - "
             "Attempt to write to write protected bit %d in control register",
             CTRL_REG_WP0);
     }
 
-    if (diffmask & 1 << CTRL_REG_WP1) {
+    if (diffmask & CTRL_MASK_WP1) {
         error_report("WARNING: RX8900 - "
             "Attempt to write to write protected bit %d in control register",
             CTRL_REG_WP1);
     }
 
-    if (diffmask & 1 << CTRL_REG_AIE) {
+    if (diffmask & CTRL_MASK_AIE) {
         qemu_log_mask(LOG_UNIMP, "WARNING: RX8900 - "
             "Alarm interrupt requested but is unimplemented");
     }
 
-    if (diffmask & 1 << CTRL_REG_TIE) {
+    if (diffmask & CTRL_MASK_TIE) {
         qemu_log_mask(LOG_UNIMP, "WARNING: RX8900 - "
             "Timer interrupt requested but is unimplemented");
     }
 
-    if (diffmask & 1 << CTRL_REG_UIE) {
+    if (diffmask & CTRL_MASK_UIE) {
         qemu_log_mask(LOG_UNIMP, "WARNING: RX8900 - "
             "Update interrupt requested but is unimplemented");
     }

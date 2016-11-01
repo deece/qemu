@@ -64,6 +64,17 @@ typedef enum ExtRegBits {
     EXT_REG_TEST = 7
 } ExtRegBits;
 
+typedef enum ExtRegMasks {
+    EXT_MASK_TSEL0 = 1UL << 0,
+    EXT_MASK_TSEL1 = 1UL << 1,
+    EXT_MASK_FSEL0 = 1UL << 2,
+    EXT_MASK_FSEL1 = 1UL << 3,
+    EXT_MASK_TE = 1UL << 4,
+    EXT_MASK_USEL = 1UL << 5,
+    EXT_MASK_WADA = 1UL << 6,
+    EXT_MASK_TEST = 1UL << 7
+} ExtRegMasks;
+
 typedef enum CtrlRegBits {
     CTRL_REG_RESET = 0,
     CTRL_REG_WP0 = 1,
@@ -74,5 +85,17 @@ typedef enum CtrlRegBits {
     CTRL_REG_CSEL0 = 6,
     CTRL_REG_CSEL1 = 7
 } CtrlRegBits;
+
+typedef enum CtrlRegMask {
+    CTRL_MASK_RESET = 0,
+    CTRL_MASK_WP0 = 1,
+    CTRL_MASK_WP1 = 2,
+    CTRL_MASK_AIE = 3,
+    CTRL_MASK_TIE = 4,
+    CTRL_MASK_UIE = 5,
+    CTRL_MASK_CSEL0 = 6,
+    CTRL_MASK_CSEL1 = 7
+} CtrlRegMask;
+
 
 #endif
