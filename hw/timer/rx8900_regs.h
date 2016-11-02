@@ -97,5 +97,26 @@ typedef enum CtrlRegMask {
     CTRL_MASK_CSEL1 = 7
 } CtrlRegMask;
 
+typedef enum FlagRegBits {
+    FLAG_REG_VDET = 0,
+    FLAG_REG_VLF = 1,
+    /* No bit 2 */
+    FLAG_REG_AF = 3,
+    FLAG_REG_TF = 4,
+    FLAG_REG_UF = 5
+    /* No bit 6 */
+    /* No bit 7 */
+} FlagRegBits;
+
+typedef enum FlagRegMask {
+    FLAG_MASK_VDET = 0,
+    FLAG_MASK_VLF = 1,
+    /* No bit 2 */
+    FLAG_MASK_AF = 3,
+    FLAG_MASK_TF = 4,
+    FLAG_MASK_UF = 5
+    /* No bit 6 */
+    /* No bit 7 */
+} FlagRegMask;
 
 #endif
