@@ -162,6 +162,12 @@ static void rx8900_event(I2CSlave *i2c, enum i2c_event event)
         break;
     case I2C_FINISH:
         if (s->weekday < 7) {
+            /* We defer the weekday calculation as it is handed to us before
+             * the date has been updated. If we calculate the weekday offset
+             * when it is passed to us, we will incorrectly determine it
+             * based on the current emulated date, rather than the date that
+             * has been written.
+             */
             struct tm now;
             qemu_get_timedate(&now, s->offset);
 
@@ -283,24 +289,18 @@ static int rx8900_send(I2CSlave *i2c, uint8_t data)
     case EXT_SECONDS:
         now.tm_sec = from_bcd(data & 0x7f);
         s->offset = qemu_timedate_diff(&now);
-        s->nvram[SECONDS] = data;
-        s->nvram[EXT_SECONDS] = data;
         break;
 
     case MINUTES:
     case EXT_MINUTES:
         now.tm_min = from_bcd(data & 0x7f);
         s->offset = qemu_timedate_diff(&now);
-        s->nvram[MINUTES] = data;
-        s->nvram[EXT_MINUTES] = data;
         break;
 
     case HOURS:
     case EXT_HOURS:
         now.tm_hour = from_bcd(data & 0x3f);
         s->offset = qemu_timedate_diff(&now);
-        s->nvram[HOURS] = data;
-        s->nvram[EXT_HOURS] = data;
         break;
 
     case WEEKDAY:
@@ -324,8 +324,6 @@ static int rx8900_send(I2CSlave *i2c, uint8_t data)
             break;
         }
         s->weekday = user_wday;
-        s->nvram[WEEKDAY] = data;
-        s->nvram[EXT_WEEKDAY] = data;
         break;
     }
 
@@ -333,24 +331,18 @@ static int rx8900_send(I2CSlave *i2c, uint8_t data)
     case EXT_DAY:
         now.tm_mday = from_bcd(data & 0x3f);
         s->offset = qemu_timedate_diff(&now);
-        s->nvram[DAY] = data;
-        s->nvram[EXT_DAY] = data;
         break;
 
     case MONTH:
     case EXT_MONTH:
         now.tm_mon = from_bcd(data & 0x1f) - 1;
         s->offset = qemu_timedate_diff(&now);
-        s->nvram[MONTH] = data;
-        s->nvram[EXT_MONTH] = data;
         break;
 
     case YEAR:
     case EXT_YEAR:
         now.tm_year = from_bcd(data) + 100;
         s->offset = qemu_timedate_diff(&now);
-        s->nvram[YEAR] = data;
-        s->nvram[EXT_YEAR] = data;
         break;
 
     case EXTENSION_REGISTER:
@@ -399,7 +391,6 @@ static void rx8900_set_temperature(Object *obj, Visitor *v, const char *name,
     RX8900State *s = RX8900(obj);
     Error *local_err = NULL;
     double temp; /* degrees Celcius */
-
     visit_type_number(v, name, &temp, &local_err);
     if (local_err) {
         error_propagate(errp, local_err);
