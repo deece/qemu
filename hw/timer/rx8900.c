@@ -21,6 +21,8 @@
 #include "qemu-common.h"
 #include "hw/i2c/i2c.h"
 #include "hw/timer/rx8900_regs.h"
+#include "hw/ptimer.h"
+#include "qemu/main-loop.h"
 #include "qemu/bcd.h"
 #include "qemu/error-report.h"
 #include "qemu/log.h"
@@ -35,6 +37,7 @@ static bool log;
 typedef struct RX8900State {
     I2CSlave parent_obj;
 
+    ptimer_state *update_timer;
     int64_t offset;
     uint8_t weekday; /* Saved for deferred offset calculation, 0-6 */
     uint8_t wday_offset;
@@ -48,6 +51,7 @@ static const VMStateDescription vmstate_rx8900 = {
     .version_id = 2,
     .minimum_version_id = 1,
     .fields = (VMStateField[]) {
+        VMSTATE_PTIMER(update_timer, RX8900State),
         VMSTATE_I2C_SLAVE(parent_obj, RX8900State),
         VMSTATE_INT64(offset, RX8900State),
         VMSTATE_UINT8_V(weekday, RX8900State, 2),
@@ -259,12 +263,19 @@ static void validate_control_register(RX8900State *s, uint8_t data)
         qemu_log_mask(LOG_UNIMP, "WARNING: RX8900 - "
             "Timer interrupt requested but is unimplemented");
     }
+}
 
-    if (diffmask & CTRL_MASK_UIE) {
-        qemu_log_mask(LOG_UNIMP, "WARNING: RX8900 - "
-            "Update interrupt requested but is unimplemented");
-    }
+static void disable_update_timer(RX8900State *s)
+{
+    /* Fill this in to disable the timer */
+    return;
+}
 
+static void enable_update_timer(RX8900State *s)
+{
+    /* Update once per second */
+    ptimer_set_freq(s->update_timer, 1);
+    ptimer_run(s->update_timer, 0);
 }
 
 static int rx8900_send(I2CSlave *i2c, uint8_t data)
@@ -355,6 +366,11 @@ static int rx8900_send(I2CSlave *i2c, uint8_t data)
     case CONTROL_REGISTER:
     case EXT_CONTROL_REGISTER:
         validate_control_register(s, data);
+        if (s->nvram[CONTROL_REGISTER] == CTRL_MASK_UIE) {
+            enable_update_timer(s);
+        } else {
+            disable_update_timer(s);
+        }
         s->nvram[CONTROL_REGISTER] = data;
         s->nvram[EXT_CONTROL_REGISTER] = data;
         break;
@@ -448,6 +464,34 @@ static void rx8900_reset(DeviceState *dev)
     s->addr_byte = false;
 }
 
+static void rx8900_raise_interrupt(void)
+{
+}
+
+static void rx8900_update_timer_tick(void *opaque)
+{
+    RX8900State *s = (RX8900State *)opaque;
+
+    if (s->nvram[EXTENSION_REGISTER] & EXT_MASK_USEL) {
+        /* Update once per minute */
+        capture_current_time(s);
+        if (s->nvram[HOURS] != 0x0) {
+            return;
+        }
+    }
+    s->nvram[FLAG_REGISTER] |= FLAG_MASK_UF;
+    rx8900_raise_interrupt();
+}
+
+static void rx8900_realize(DeviceState *dev, Error **errp)
+{
+    RX8900State *s = RX8900(dev);
+    QEMUBH *bh;
+
+    bh = qemu_bh_new(rx8900_update_timer_tick, s);
+    s->update_timer = ptimer_init(bh, PTIMER_POLICY_DEFAULT);
+}
+
 static void rx8900_class_init(ObjectClass *klass, void *data)
 {
     DeviceClass *dc = DEVICE_CLASS(klass);
@@ -457,6 +501,7 @@ static void rx8900_class_init(ObjectClass *klass, void *data)
     k->event = rx8900_event;
     k->recv = rx8900_recv;
     k->send = rx8900_send;
+    dc->realize = rx8900_realize;
     dc->reset = rx8900_reset;
     dc->vmsd = &vmstate_rx8900;
 }
