@@ -29,6 +29,10 @@
 #include "qapi/error.h"
 #include "qapi/visitor.h"
 
+ #include <sys/time.h>
+
+ #include <execinfo.h>
+
 #define TYPE_RX8900 "rx8900"
 #define RX8900(obj) OBJECT_CHECK(RX8900State, (obj), TYPE_RX8900)
 
@@ -44,6 +48,7 @@ typedef struct RX8900State {
     uint8_t nvram[RX8900_NVRAM_SIZE];
     int32_t ptr; /* Wrapped to stay within RX8900_NVRAM_SIZE */
     bool addr_byte;
+    qemu_irq interrupt_pin;
 } RX8900State;
 
 static const VMStateDescription vmstate_rx8900 = {
@@ -51,8 +56,8 @@ static const VMStateDescription vmstate_rx8900 = {
     .version_id = 2,
     .minimum_version_id = 1,
     .fields = (VMStateField[]) {
-        VMSTATE_PTIMER(update_timer, RX8900State),
         VMSTATE_I2C_SLAVE(parent_obj, RX8900State),
+        VMSTATE_PTIMER(update_timer, RX8900State),
         VMSTATE_INT64(offset, RX8900State),
         VMSTATE_UINT8_V(weekday, RX8900State, 2),
         VMSTATE_UINT8_V(wday_offset, RX8900State, 2),
@@ -76,9 +81,18 @@ static void trace(const char *file, int line, const char *func,
 {
     va_list ap;
     char buf[RX8900_TRACE_BUF_SIZE];
+    char timestamp[32];
     int len;
+    struct timeval now;
+    struct tm *now2;
 
-    len = snprintf(buf, sizeof(buf), "\n\t%s:%s:%d: RX8900 %s %s@0x%x: %s",
+    gettimeofday(&now, NULL);
+    now2 = localtime(&now.tv_sec);
+
+    strftime(timestamp, sizeof(timestamp), "%F %T", now2);
+
+    len = snprintf(buf, sizeof(buf), "\n\t%s.%03ld %s:%s:%d: RX8900 %s %s@0x%x: %s",
+            timestamp, now.tv_usec / 1000,
             file, func, line, dev->qdev.id, dev->qdev.parent_bus->name,
             dev->address, fmt);
     if (len >= RX8900_TRACE_BUF_SIZE) {
@@ -133,6 +147,7 @@ static void capture_current_time(RX8900State *s)
             (now.tm_wday + s->wday_offset) % 7,
             now.tm_mday, now.tm_mon, now.tm_year + 1900,
             s->nvram[HOURS], s->nvram[MINUTES], s->nvram[SECONDS],
+            s->nvram[WEEKDAY],
             s->nvram[DAY], s->nvram[MONTH], s->nvram[YEAR]);
 }
 
@@ -265,16 +280,39 @@ static void validate_control_register(RX8900State *s, uint8_t data)
     }
 }
 
+static void rx8900_fire_interrupt(RX8900State *s)
+{
+    TRACE(s->parent_obj, "Pulsing interrupt");
+    qemu_irq_pulse(s->interrupt_pin);
+}
+
+static void rx8900_update_timer_tick(void *opaque)
+{
+    RX8900State *s = (RX8900State *)opaque;
+
+    TRACE(s->parent_obj, "Tick");
+
+    if (s->nvram[EXTENSION_REGISTER] & EXT_MASK_USEL) {
+        /* Update once per minute */
+        capture_current_time(s);
+        if (s->nvram[HOURS] != 0x0) {
+            TRACE(s->parent_obj,
+                "Skipping interrupt as we are configured for once per minute");
+            return;
+        }
+    }
+    s->nvram[FLAG_REGISTER] |= FLAG_MASK_UF;
+    rx8900_fire_interrupt(s);
+}
+
 static void disable_update_timer(RX8900State *s)
 {
-    /* Fill this in to disable the timer */
+    ptimer_stop(s->update_timer);
     return;
 }
 
 static void enable_update_timer(RX8900State *s)
 {
-    /* Update once per second */
-    ptimer_set_freq(s->update_timer, 1);
     ptimer_run(s->update_timer, 0);
 }
 
@@ -366,13 +404,16 @@ static int rx8900_send(I2CSlave *i2c, uint8_t data)
     case CONTROL_REGISTER:
     case EXT_CONTROL_REGISTER:
         validate_control_register(s, data);
-        if (s->nvram[CONTROL_REGISTER] == CTRL_MASK_UIE) {
-            enable_update_timer(s);
-        } else {
-            disable_update_timer(s);
-        }
         s->nvram[CONTROL_REGISTER] = data;
         s->nvram[EXT_CONTROL_REGISTER] = data;
+
+        if (s->nvram[CONTROL_REGISTER] & CTRL_MASK_UIE) {
+            TRACE(s->parent_obj, "Enabling update timer");
+            enable_update_timer(s);
+        } else {
+            TRACE(s->parent_obj, "Disabling update timer");
+            disable_update_timer(s);
+        }
         break;
 
     default:
@@ -464,38 +505,31 @@ static void rx8900_reset(DeviceState *dev)
     s->addr_byte = false;
 }
 
-static void rx8900_raise_interrupt(void)
-{
-}
-
-static void rx8900_update_timer_tick(void *opaque)
-{
-    RX8900State *s = (RX8900State *)opaque;
-
-    if (s->nvram[EXTENSION_REGISTER] & EXT_MASK_USEL) {
-        /* Update once per minute */
-        capture_current_time(s);
-        if (s->nvram[HOURS] != 0x0) {
-            return;
-        }
-    }
-    s->nvram[FLAG_REGISTER] |= FLAG_MASK_UF;
-    rx8900_raise_interrupt();
-}
-
 static void rx8900_realize(DeviceState *dev, Error **errp)
 {
     RX8900State *s = RX8900(dev);
+    I2CSlave *i2c = I2C_SLAVE(dev);
     QEMUBH *bh;
+    static uint8_t index;
+    char name[64];
 
     bh = qemu_bh_new(rx8900_update_timer_tick, s);
     s->update_timer = ptimer_init(bh, PTIMER_POLICY_DEFAULT);
+    ptimer_set_freq(s->update_timer, 1);
+
+    snprintf(name, sizeof(name), "rx8900.%d.interrupt-out", index++);
+    qdev_init_gpio_out_named(&i2c->qdev, &s->interrupt_pin, name, 1);
+
+    TRACE(s->parent_obj, "Realized, interrupt pin is '%s'", name);
+
 }
 
 static void rx8900_class_init(ObjectClass *klass, void *data)
 {
     DeviceClass *dc = DEVICE_CLASS(klass);
     I2CSlaveClass *k = I2C_SLAVE_CLASS(klass);
+
+    fprintf(stderr, "Class inited\n");
 
     k->init = rx8900_init;
     k->event = rx8900_event;

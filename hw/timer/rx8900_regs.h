@@ -16,6 +16,8 @@
 #ifndef RX8900_REGS_H
 #define RX8900_REGS_H
 
+#include "qemu/bitops.h"
+
 #define RX8900_NVRAM_SIZE 0x20
 
 typedef enum RX8900Addresses {
@@ -65,14 +67,14 @@ typedef enum ExtRegBits {
 } ExtRegBits;
 
 typedef enum ExtRegMasks {
-    EXT_MASK_TSEL0 = 1UL << 0,
-    EXT_MASK_TSEL1 = 1UL << 1,
-    EXT_MASK_FSEL0 = 1UL << 2,
-    EXT_MASK_FSEL1 = 1UL << 3,
-    EXT_MASK_TE = 1UL << 4,
-    EXT_MASK_USEL = 1UL << 5,
-    EXT_MASK_WADA = 1UL << 6,
-    EXT_MASK_TEST = 1UL << 7
+    EXT_MASK_TSEL0 = BIT(0),
+    EXT_MASK_TSEL1 = BIT(1),
+    EXT_MASK_FSEL0 = BIT(2),
+    EXT_MASK_FSEL1 = BIT(3),
+    EXT_MASK_TE = BIT(4),
+    EXT_MASK_USEL = BIT(5),
+    EXT_MASK_WADA = BIT(6),
+    EXT_MASK_TEST = BIT(7)
 } ExtRegMasks;
 
 typedef enum CtrlRegBits {
@@ -87,14 +89,14 @@ typedef enum CtrlRegBits {
 } CtrlRegBits;
 
 typedef enum CtrlRegMask {
-    CTRL_MASK_RESET = 0,
-    CTRL_MASK_WP0 = 1,
-    CTRL_MASK_WP1 = 2,
-    CTRL_MASK_AIE = 3,
-    CTRL_MASK_TIE = 4,
-    CTRL_MASK_UIE = 5,
-    CTRL_MASK_CSEL0 = 6,
-    CTRL_MASK_CSEL1 = 7
+    CTRL_MASK_RESET = BIT(0),
+    CTRL_MASK_WP0 = BIT(1),
+    CTRL_MASK_WP1 = BIT(2),
+    CTRL_MASK_AIE = BIT(3),
+    CTRL_MASK_TIE = BIT(4),
+    CTRL_MASK_UIE = BIT(5),
+    CTRL_MASK_CSEL0 = BIT(6),
+    CTRL_MASK_CSEL1 = BIT(7)
 } CtrlRegMask;
 
 typedef enum FlagRegBits {
@@ -108,13 +110,14 @@ typedef enum FlagRegBits {
     /* No bit 7 */
 } FlagRegBits;
 
+#define RX8900_INTERRUPT_SOURCES 6
 typedef enum FlagRegMask {
-    FLAG_MASK_VDET = 0,
-    FLAG_MASK_VLF = 1,
+    FLAG_MASK_VDET = BIT(0),
+    FLAG_MASK_VLF = BIT(1),
     /* No bit 2 */
-    FLAG_MASK_AF = 3,
-    FLAG_MASK_TF = 4,
-    FLAG_MASK_UF = 5
+    FLAG_MASK_AF = BIT(3),
+    FLAG_MASK_TF = BIT(4),
+    FLAG_MASK_UF = BIT(5)
     /* No bit 6 */
     /* No bit 7 */
 } FlagRegMask;
